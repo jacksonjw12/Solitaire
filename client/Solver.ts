@@ -651,10 +651,6 @@ export class Solver {
     getCellToCell(grabs: Cell[], gameState: GameState): Move[] {
 
         let moves = []
-        const canPutGrabOnTopCard = (cell:Cell, topCard: Card) => {
-
-
-        }
 
         for(const [outerGrabCellIndex, outerGrabCell] of grabs.entries()) {
             if (outerGrabCellIndex >= 8) {
@@ -712,9 +708,9 @@ export class Solver {
                 doneEmpty = true;
                 
                 
-
                 // Destination cell is empty, run through the grab.
                 for(let g = 0; g < outerGrabCell.length; g++) {
+                    //console.log({outerGrabCell})
                     const nextState = quickCopyState(gameState);
                     const subgrab = nextState.gameCells[outerGrabCellIndex].splice(-g-1);
                     nextState.gameCells[innerGameCellIndex] = nextState.gameCells[innerGameCellIndex].concat(subgrab);
@@ -822,6 +818,7 @@ export class Solver {
                         break;
                     }
                     grab.push(nextCard);
+                    lastCard = nextCard;
 
                     s--;
                 }
@@ -896,6 +893,36 @@ export class Solver {
         // ]
     }
 
+
+    runTests() {
+
+        const gameState1: GameState = {
+            freeCards: [null, null, null],
+            lotusCell: null,
+            gameCells: [[
+                
+                {rank: '9', color: 'GREEN'},
+                {rank: '8', color: 'RED'},
+                {rank: '7', color: 'GREEN'},
+                {rank: '6', color: 'RED'},
+                {rank: '5', color: 'GREEN'},
+                {rank: '4', color: 'RED'},
+                {rank: '3', color: 'GREEN'},
+                {rank: '2', color: 'RED'},
+                {rank: '1', color: 'GREEN'}
+            ],[],[],[],[],[],[],[]],
+            redStack: 0,
+            greenStack: 0,
+            blackStack: 0
+        }
+
+        this.renderCb(gameState1);
+
+        (window as any).moves = this.getAllMovesFrom(gameState1);
+
+
+
+    }
 
 
 

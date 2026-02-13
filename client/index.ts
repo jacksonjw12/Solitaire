@@ -24,8 +24,11 @@ class GameImpl implements Game {
 
 
         window.setTimeout(() => {
-            if (this.solver && this.gameState)
+            if (this.solver && this.gameState) {
+                //this.solver.runTests()
                 this.solver.solveFrom(this.gameState);
+            }
+            
         })
     }
 
