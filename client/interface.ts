@@ -31,14 +31,19 @@ export function isNumber(card: Card): card is NumberCard {
     return !!(card as NumberCard).rank;
 }
 
+export function cardEquals(cardA: Card, cardB: Card) {
+    if (isDragon(cardA) && isDragon(cardB)) {
+        return cardA.color === cardB.color;
+    }
+    else if (isNumber(cardA) && isNumber(cardB)) {
+        return cardA.color === cardB.color && cardA.rank === cardB.rank;
+    }
+    return false;
+}
+
 export interface NumberCard {
     color: Color
     rank: Rank
-}
-
-export interface NumberStack {
-    number: number
-    color: Color
 }
 
 
@@ -52,7 +57,9 @@ export interface GameState {
     // Top mid
     lotusCell: Lotus | null
     // Top Right
-    numberStacks: [NumberStack, NumberStack, NumberStack]
+    redStack: number
+    greenStack: number
+    blackStack: number
 
     gameCells: [Cell, Cell, Cell, Cell, Cell, Cell, Cell, Cell]
 
@@ -84,8 +91,7 @@ export const WIN_STATE: GameState = {
     freeCards: [{color: 'GREEN', isDragon: true, locked: true}, {color: 'BLACK', isDragon: true, locked: true}, {color: 'RED', isDragon: true, locked: true}],
     lotusCell: {isLotus: true, locked: true},
     gameCells: [[],[],[],[],[],[],[],[]],
-    numberStacks: [
-    {color: 'GREEN', number: 9},
-    {color: 'BLACK', number: 9 }, 
-    {color: 'RED', number: 9}]
+    redStack: 9,
+    greenStack: 9,
+    blackStack: 9
 }

@@ -1,10 +1,10 @@
 import './styles.css'; // We will populate this file in next sub-chapter
 
-import {Card, Color,Cell, COLORS, Game, GameState, NumberStack, RANKS, Rank, isDragon, isLotus} from './interface'
+import {Card, Color,Cell, COLORS, Game, GameState, RANKS, Rank, isDragon, isLotus} from './interface'
 import {Solver} from './Solver'
 
 declare global {
-    interface Window { game: Game; }
+    interface Window { game: Game;}
 }
 
 class GameImpl implements Game {
@@ -17,7 +17,10 @@ class GameImpl implements Game {
         window.game = this;
         this.gameState = GameImpl.createInitialGameState()
         GameImpl.renderGameState(this.gameState);
-        this.solver = new Solver();
+        this.solver = new Solver((gameState: GameState) => {
+            this.gameState = gameState;
+            GameImpl.renderGameState(this.gameState);
+        });
 
 
         window.setTimeout(() => {
@@ -65,7 +68,6 @@ class GameImpl implements Game {
         console.log(deck);
         const gameCells: [Cell, Cell, Cell, Cell, Cell, Cell, Cell, Cell] = [[],[],[],[],[],[],[],[]]
         const freeCards: [Card|null,Card|null,Card|null] = [null,null,null];
-        const numberStacks: [NumberStack, NumberStack, NumberStack] = [{color: 'GREEN', number: 0},{color: 'BLACK', number: 0},{color: 'RED', number: 0}];
 
         let curIndex = 0;
 
@@ -80,7 +82,9 @@ class GameImpl implements Game {
         const state = {
             freeCards,
             lotusCell: null,
-            numberStacks,
+            redStack: 0,
+            greenStack: 0,
+            blackStack: 0,
             gameCells,
         }
         
@@ -188,11 +192,10 @@ class GameImpl implements Game {
 
         drawCell(state.lotusCell ? [state.lotusCell] : undefined, 3.5, 0);
 
-        for(let i = 0; i < state.numberStacks.length; i++) {
-            const stack = state.numberStacks[i];
-            drawCell(stack.number > 0 ? [{color: stack.color, rank: `${stack.number}`}] : undefined, 5+i, 0);
-
-        }
+        drawCell(state.redStack > 0 ? [{color: 'RED', rank: `${state.redStack}`}] : undefined, 5, 0);
+        drawCell(state.greenStack > 0 ? [{color: 'GREEN', rank: `${state.greenStack}`}] : undefined, 6, 0);
+        drawCell(state.blackStack > 0 ? [{color: 'BLACK', rank: `${state.blackStack}`}] : undefined, 7, 0);
+        
 
         for(let i = 0; i < state.gameCells.length; i++) {   
             const stack = state.gameCells[i];
@@ -204,3 +207,5 @@ class GameImpl implements Game {
 }
 
 new GameImpl();
+
+(window as any).renderGameState = GameImpl.renderGameState
