@@ -1,5 +1,14 @@
-import {Card, Color,Cell, COLORS, cardEquals, Game, GameState, NumberCard, isNumber, RANKS, Rank, isDragon, isLotus, WIN_STATE, Lockable} from './interface'
+import {Card, Color,Cell, COLORS, cardEquals, Dragon, Game, GameState, NumberCard, isNumber, RANKS, Rank, isDragon, isLotus, WIN_STATE, Lockable} from './interface'
 import stableStringify from 'json-stable-stringify';
+import objectHash from 'object-hash';
+
+// let a = [[1,2],[3]];
+// let b = [[3],[1,2]]
+// console.log (stableStringify(a), stableStringify(b), stableStringify(a) === stableStringify(b));
+
+// let aHash = objectHash(a, {unorderedArrays: true})
+// let bHash = objectHash(b, {unorderedArrays: true})
+// console.log(aHash, bHash, aHash === bHash);
 
 const scores = {
     emptyGameCell: 1.0,
@@ -182,16 +191,15 @@ const compare = (gameStateA: GameState, gameStateB: GameState): Comparison => {
     // }
     let loose = strict;
     if(strict == 0) {
-        loose = scoreA.aggregateFree - scoreB.aggregateFree
-        if (loose == 0) {
-            loose = scoreA.cardsInPlay - scoreB.cardsInPlay
-        }
+        //strict = scoreA.aggregateFree - scoreB.aggregateFree
+        //if (strict == 0) {
+        loose = scoreB.cardsInPlay - scoreA.cardsInPlay
+        //}
     }
 
    return {
     strict,
     loose
-    
     };
 
    
@@ -201,9 +209,8 @@ const compare = (gameStateA: GameState, gameStateB: GameState): Comparison => {
 
 export class Solver {
     static winHash = Solver.getStateHash(WIN_STATE)
-
     static getStateHash(gameState: GameState): string {
-        const s = stableStringify(gameState)
+        const s = objectHash(gameState, {unorderedArrays: true})
         if (s === undefined) {
             throw new Error(`Stable stringify was not able to handle gameState: ${JSON.stringify(gameState)}`);
         }
@@ -222,7 +229,7 @@ export class Solver {
     constructSolution(node: Move): Solution {
         let path = [node];
         let atOrigin = false;
-        let maxDepth = 10;
+        let maxDepth = 1000;
         let depth = 0;
         while(!atOrigin && depth < maxDepth ) {
             const parent = this.parentMap.get(path[path.length-1].hash);
@@ -235,7 +242,10 @@ export class Solver {
             }
             depth++;
         }
-        return path.reverse();
+        path = path.reverse();
+
+        //console.log(...path)
+        return path;
     }
 
    
@@ -246,100 +256,107 @@ export class Solver {
 
         let localMax = 0;
 
-        let stack: Solution = [{moveType: MoveType.Initial,gameState, hash: Solver.getStateHash(gameState)}];
-        while (stack.length) {
-            const node = stack.pop();
-            if (!node) {
-                throw new Error("node was empty");
-            }
-            const {gameState, hash, isWin} = node;
-            
-            if (this.visitedMap.has(hash)) {
-                continue;
-            }
-            //console.log("move was unseen", node)
-            this.visitedMap.set(hash, true);
-
-            if (isWin) {
-                console.log("got a win", node);
-                (window as any).parentMap = this.parentMap;
-                if (!fullyExplore) {
-                    return this.constructSolution(node);
+        let stackI: Solution = [{moveType: MoveType.Initial,gameState, hash: Solver.getStateHash(gameState)}];
+        let stackStack = [stackI];
+        while(stackStack.length) {
+            let stack = stackStack.pop() ?? [];
+            while (stack.length) {
+                const node = stack.pop();
+                if (!node) {
+                    throw new Error("node was empty");
                 }
-            }
-            
-            const myParent = this.parentMap.get(hash) ?? {parentHash: "origin", parentDepth: -1};
-            const myDepth = myParent.parentDepth + 1;
-
-            let {moves, freeMoves} = this.getAllMovesFrom(gameState);
-            await waitAtLeast(0);
-
-            while (freeMoves.length) {
-                const freeMove = freeMoves[0];
-                const parentMap = this.parentMap.get(freeMove.hash);
-                if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
-                    // Found a closer way or initial way to get to this move.
-                    this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
-                }
-
-                ({moves, freeMoves} = this.getAllMovesFrom(freeMoves[0].gameState))
+                const {gameState, hash, isWin} = node;
                 
-            }
-
-            if(freeMoves.length) {
-
-                const freeMove = freeMoves[0];
-                const parentMap = this.parentMap.get(freeMove.hash);
-                if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
-                    // Found a closer way or initial way to get to this move.
-                    this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
+                if (this.visitedMap.has(hash)) {
+                    continue;
                 }
-                if (!this.visitedMap.has(freeMove.hash)) {
-                    stack.push(freeMove);
+                //console.log("move was unseen", node)
+                this.visitedMap.set(hash, true);
+
+                if (isWin) {
+                    console.log("got a win", node);
+                    (window as any).parentMap = this.parentMap;
+                    if (!fullyExplore) {
+                        const solution = this.constructSolution(node);
+                        return solution;
+                    }
                 }
-            } else {
+                
+                const myParent = this.parentMap.get(hash) ?? {parentHash: "origin", parentDepth: -1};
+                const myDepth = myParent.parentDepth + 1;
 
-                // First we should check if we are in a new global "better" position than the previous state
-                // If so we should prune the tree and re-begin the serach
+                let {moves, freeMoves} = this.getAllMovesFrom(gameState);
+                await waitAtLeast(0);
 
-                for (const move of moves) {
-                    const comp = compare(move.gameState, gameState)
-                    
-                    
-                    
-                    const parentMap = this.parentMap.get(move.hash);
+                while (freeMoves.length) {
+                    const freeMove = freeMoves[0];
+                    const parentMap = this.parentMap.get(freeMove.hash);
                     if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
                         // Found a closer way or initial way to get to this move.
-                        this.parentMap.set(move.hash, {parentMove: node, parentDepth: myDepth})
+                        this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
                     }
+
+                    ({moves, freeMoves} = this.getAllMovesFrom(freeMoves[0].gameState))
                     
-                    if (!this.visitedMap.has(move.hash)) {
-                        if(comp.loose > localMax) {
-                        localMax = comp.loose;
-                        console.log("found new local max: ", move)
-                        //this.renderCb(move.gameState);
-                        //await waitAtLeast(100);
+                }
+
+                if(freeMoves.length) {
+
+                    const freeMove = freeMoves[0];
+                    const parentMap = this.parentMap.get(freeMove.hash);
+                    if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
+                        // Found a closer way or initial way to get to this move.
+                        this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
                     }
-                    if (comp.strict > 0.1) {
-                        console.log("found new best state: ", move);
-                        this.renderCb(move.gameState);
-                        console.log("solution: ", this.constructSolution(move))
-                        await waitAtLeast(100);
-                        //stack = [];
-                        //break;
+                    if (!this.visitedMap.has(freeMove.hash)) {
+                        stack.push(freeMove);
+                    }
+                } else {
+
+                    // First we should check if we are in a new global "better" position than the previous state
+                    // If so we should prune the tree and re-begin the serach
+
+                    for (const move of moves) {
+                        const comp = compare(move.gameState, gameState)
                         
-                    }
-                        stack.push(move)
+                        
+                        const parentMap = this.parentMap.get(move.hash);
+                        if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
+                            // Found a closer way or initial way to get to this move.
+                            this.parentMap.set(move.hash, {parentMove: node, parentDepth: myDepth})
+                        }
+                        
+                        if (!this.visitedMap.has(move.hash)) {
+                            if(comp.loose > localMax) {
+                            localMax = comp.loose;
+                            //console.log("found new local max: ", move)
+                            //this.renderCb(move.gameState);
+                            //await waitAtLeast(100);
+                        }
+                        if (comp.loose > 0) {
+                            //console.log("found new best state: ", move);
+                            this.renderCb(move.gameState);
+                            //console.log("solution: ", this.constructSolution(move))
+                            //await waitAtLeast(10);
+                            stackStack.push([...stack]);
+                            stack = [];
+                            //break;
+                            
+                        }
+                            stack.push(move)
+                        }
                     }
                 }
+                
+            
+                
+
+
             }
-            
-        
-            
-
-
+            console.log("exhausted partial search");
         }
-        console.log("exhausted search");
+        console.log("exhausted total search")
+        
         return false;
 
     }
@@ -390,23 +407,33 @@ export class Solver {
                     continue;
                 }
                 const topCard = cellGrab[0];
+                
                 if (!isDragon(topCard) || topCard.color !== color) {
                     continue;
                 }
                 dragonIndices.push(cellIndex);
             }
+            //console.log(dragonIndices, color, collectAt)
             if(dragonIndices.length !== 4) {
                 return false;
             }
+            const maxDragon = Math.max(...dragonIndices);
+            if (maxDragon > 7) {
+                collectAt = maxDragon;
+            }
 
-            // Get the highest dragon index, and the highest empty free cell to determine if we can collect
-            collectAt = Math.max(collectAt, Math.max(...dragonIndices));
+            // // Get the highest dragon index, and the highest empty free cell to determine if we can collect
+            // collectAt = Math.max(collectAt, maxDragon);
+            
             if(collectAt < 8) {
                 return false;
             }
             const freeSlotIndex = collectAt - 8;
+            if (freeSlotIndex < 0 || freeSlotIndex > 2) {
+                throw new Error(`invalid free slot index: ${freeSlotIndex}`)
+            }
+            
             const nextState = quickCopyState(gameState);
-            let dragon;
             // pop off all the dragons
             for(let i of dragonIndices) {
                 if (i < 8) {
@@ -416,6 +443,7 @@ export class Solver {
                     nextState.freeCards[i-8] = null;
                 }
             }
+            //console.log(grabs)
             nextState.freeCards[freeSlotIndex] = {isDragon: true, locked: true, color}
             const hash = Solver.getStateHash(nextState);
             const move = {
@@ -502,6 +530,55 @@ export class Solver {
         return moves;
     }
 
+    getAdvancedNumberCollectiongetNumberCollection(grabs: Cell[], gameState: GameState): Move[] {
+        const moves: Move[] = []
+        // Find all exposed end cards.
+        for(const [cellIndex, cellGrab] of grabs.entries()) {
+            const topCard = cellGrab[0];
+            if (!topCard || !isNumber(topCard)){
+                continue;
+            }
+            const rankVal = Number(topCard.rank);
+            const stack = getStackFromColor(gameState, topCard.color);
+            if (stack + 1 === rankVal) {
+
+                //exposedEndCards.push({card: topCard, cellIndex})
+                const nextState = quickCopyState(gameState);
+                if(cellIndex < 8) {
+                    nextState.gameCells[cellIndex].pop()
+                }
+                else {
+                    nextState.freeCards[cellIndex-8] = null;
+                }
+
+                if (topCard.color === "RED") {
+                    nextState.redStack++;
+
+                } else if (topCard.color === "GREEN") {
+                    nextState.greenStack++;
+                } else {
+                    nextState.blackStack++;
+                }
+
+                const hash = Solver.getStateHash(nextState);
+                moves.push({
+                    gameState: nextState,
+                    description: `collect ${topCard.color.toLowerCase()} ${topCard.rank}`,
+                    hash,
+                    isWin: hash === Solver.winHash,
+                    moveType: MoveType.NumberCollection
+                })
+
+            }
+        }
+
+
+       
+       
+
+        return moves;
+    }
+
     getFreeSlotToCell(grabs: Cell[], gameState: GameState): Move[] {
         let moves: Move[] = []
         for(const [freeCardIndex, freeCardValue] of gameState.freeCards.entries()) {
@@ -515,9 +592,9 @@ export class Solver {
                     if(gameState.gameCells[i].length === 0) {
                         // Generate a move of the dragon to this cell.
                         const nextState = quickCopyState(gameState);
-                        nextState.freeCards[freeCardIndex] = null;
                         nextState.gameCells[i].push(freeCardValue);
-
+                        nextState.freeCards[freeCardIndex] = null;
+                        
                         const hash = Solver.getStateHash(nextState);
                         moves.push({
                             gameState: nextState,
@@ -715,6 +792,8 @@ export class Solver {
         //console.log("getAllMovesFrom");
         // const grabs = this.getAllGrabs(gameState);
 
+        let parentScore = score(gameState);
+
         const grabs: Cell[] = [] 
 
         let emptyCells = 0;
@@ -749,16 +828,18 @@ export class Solver {
                 grabs.push(grab);
             }
         }
-        let emptyFreeCards = 0;
         for(let f = 0; f < gameState.freeCards.length; f++) {
             const card = gameState.freeCards[f];
-            if (card && !(card as Lockable).locked) {
+            if (card) {
                 grabs.push([card]);
             }
             else {
-                emptyFreeCards++;
                 grabs.push([])
             }
+            // else {
+            //     emptyFreeCards++;
+            //     grabs.push(null)
+            // }
         }
         
         let freeMoves: Move[] = []
@@ -770,6 +851,7 @@ export class Solver {
         // Potentially costly moves
         moves = moves.concat(this.getDragonCollection(grabs, gameState))
         moves = moves.concat(this.getFreeSlotToCell(grabs, gameState));
+        moves = moves.concat(this.getAdvancedNumberCollectiongetNumberCollection(grabs,gameState));
 
         moves = moves.concat(this.getCellToCell(grabs, gameState));
 
@@ -777,6 +859,29 @@ export class Solver {
         moves = moves.concat(this.getCellToFreeSlot(grabs, gameState));
 
         // console.log(moves)
+
+
+        for(let move of moves) {
+            let moveScore = score(move.gameState);
+            if(moveScore.cardsInPlay !== parentScore.cardsInPlay) {
+                let delta = parentScore.cardsInPlay - moveScore.cardsInPlay;
+                let expectedDelta = -(gameState.redStack + gameState.blackStack + gameState.greenStack) +
+                 (move.gameState.redStack + move.gameState.blackStack + move.gameState.greenStack) 
+                
+                if (moveScore.foldedDragons !== parentScore.foldedDragons) {
+                    expectedDelta+=3;
+                }
+                if (move.moveType == MoveType.LotusCollection) {
+                    expectedDelta--;
+                }
+                if(delta !== expectedDelta) {
+                    console.log({delta, expectedDelta, move, parent: gameState});
+                    throw new Error("got it")
+                }
+
+            }
+
+        }
 
 
 

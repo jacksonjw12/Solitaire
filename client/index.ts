@@ -148,6 +148,11 @@ class GameImpl implements Game {
             }
 
             if (isDragon(card)) {
+                if(card.locked) {
+                   ctx.fillStyle = "grey";
+                   ctx.fill();
+                   ctx.fillStyle = "black"
+                }
                 if (card.color == 'RED') {
                     drawText('👹')
 
