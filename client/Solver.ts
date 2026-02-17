@@ -2,20 +2,6 @@ import {Card, Color,Cell, COLORS, cardEquals, Dragon, Game, GameState, NumberCar
 import stableStringify from 'json-stable-stringify';
 import objectHash from 'object-hash';
 
-// let a = [[1,2],[3]];
-// let b = [[3],[1,2]]
-// console.log (stableStringify(a), stableStringify(b), stableStringify(a) === stableStringify(b));
-
-// let aHash = objectHash(a, {unorderedArrays: true})
-// let bHash = objectHash(b, {unorderedArrays: true})
-// console.log(aHash, bHash, aHash === bHash);
-
-const scores = {
-    emptyGameCell: 1.0,
-    emptyFreeSlot: 0.5,
-    fullySortedCell: 1.0
-}
-
 // Must be stable to detect cycles, depth can't go in here.
 export interface Move {
     gameState: GameState
@@ -33,18 +19,11 @@ export enum MoveType {
     LotusCollection,
     DragonCollection,
     NumberCollection,
+    NumberAndLotusCollection,
     FreeSlotToCell,
     CellToCell,
     CellToFreeSlot,
 }
-
-const moveOrder = [
-    MoveType.LotusCollection, 
-    MoveType.DragonCollection,
-    MoveType.NumberCollection,
-    MoveType.FreeSlotToCell,
-    MoveType.CellToCell,
-    MoveType.CellToFreeSlot]
 
 
 export type Solution = Move[]
@@ -144,15 +123,6 @@ const score = (gameState: GameState): GameScore => {
         if (!gameCell.length) {
             freeCells++;
         }
-        // if (gameCell.length === 1 && freeCards) {
-        //     freeCards--;
-        //     freeCells++;
-        // }
-
-        // let isGoodStack = true;
-        // for(let g = 0; g < gameCell.length; g++) {
-            
-        // }
 
     }
    
@@ -167,45 +137,24 @@ const score = (gameState: GameState): GameScore => {
 
 }
 
-interface Comparison {
-    strict: number
-    loose: number
-}
 
 // positive if A better than B
 // negative if A worse than B
 // 0 if not able to tell
-const compare = (gameStateA: GameState, gameStateB: GameState): Comparison => {
+const compare = (gameStateA: GameState, gameStateB: GameState): number => {
    // we should see if we are in a new global better position, 
    // if so 
    const scoreA = score(gameStateA);
    const scoreB = score(gameStateB);
 
-//    if (scoreA.aggregateFree == scoreB.aggregateFree) {
-//     return scoreA.freeCards - scoreB.freeCards;
-//    }
-
     let strict = scoreA.freeCells + scoreA.freeCards - scoreB.freeCells - scoreB.freeCards;
-    // if (strict === 0) {
-    //     strict = scoreA.freeCells - scoreB.freeCells
-    // }
-    let loose = strict;
+   
     if(strict == 0) {
-        //strict = scoreA.aggregateFree - scoreB.aggregateFree
-        //if (strict == 0) {
-        loose = scoreB.cardsInPlay - scoreA.cardsInPlay
-        //}
+       return scoreB.cardsInPlay - scoreA.cardsInPlay
     }
 
-   return {
-    strict,
-    loose
-    };
-
-   
+   return strict;   
 }
-
-
 
 export class Solver {
     static winHash = Solver.getStateHash(WIN_STATE)
@@ -229,7 +178,7 @@ export class Solver {
     constructSolution(node: Move): Solution {
         let path = [node];
         let atOrigin = false;
-        let maxDepth = 1000;
+        let maxDepth = 5000;
         let depth = 0;
         while(!atOrigin && depth < maxDepth ) {
             const parent = this.parentMap.get(path[path.length-1].hash);
@@ -244,7 +193,6 @@ export class Solver {
         }
         path = path.reverse();
 
-        //console.log(...path)
         return path;
     }
 
@@ -252,110 +200,121 @@ export class Solver {
     async solveFrom(gameState: GameState): Promise<Solution | false> {
         console.log("solving");
 
-        const fullyExplore = false;
-
+        const fullyExplore = true;
         let localMax = 0;
+        let solutionNode: Move | undefined;
+        let stack: Solution = [{moveType: MoveType.Initial,gameState, hash: Solver.getStateHash(gameState)}];
+        let numProcessed = 0;
+        let totalStackSize = 1;
+        let shortestDepth = -1;
 
-        let stackI: Solution = [{moveType: MoveType.Initial,gameState, hash: Solver.getStateHash(gameState)}];
-        let stackStack = [stackI];
-        while(stackStack.length) {
-            let stack = stackStack.pop() ?? [];
-            while (stack.length) {
-                const node = stack.pop();
-                if (!node) {
-                    throw new Error("node was empty");
-                }
-                const {gameState, hash, isWin} = node;
-                
-                if (this.visitedMap.has(hash)) {
-                    continue;
-                }
-                //console.log("move was unseen", node)
-                this.visitedMap.set(hash, true);
-
-                if (isWin) {
-                    console.log("got a win", node);
-                    (window as any).parentMap = this.parentMap;
-                    if (!fullyExplore) {
-                        const solution = this.constructSolution(node);
-                        return solution;
-                    }
-                }
-                
-                const myParent = this.parentMap.get(hash) ?? {parentHash: "origin", parentDepth: -1};
-                const myDepth = myParent.parentDepth + 1;
-
-                let {moves, freeMoves} = this.getAllMovesFrom(gameState);
-                await waitAtLeast(0);
-
-                while (freeMoves.length) {
-                    const freeMove = freeMoves[0];
-                    const parentMap = this.parentMap.get(freeMove.hash);
-                    if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
-                        // Found a closer way or initial way to get to this move.
-                        this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
-                    }
-
-                    ({moves, freeMoves} = this.getAllMovesFrom(freeMoves[0].gameState))
-                    
-                }
-
-                if(freeMoves.length) {
-
-                    const freeMove = freeMoves[0];
-                    const parentMap = this.parentMap.get(freeMove.hash);
-                    if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
-                        // Found a closer way or initial way to get to this move.
-                        this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
-                    }
-                    if (!this.visitedMap.has(freeMove.hash)) {
-                        stack.push(freeMove);
-                    }
-                } else {
-
-                    // First we should check if we are in a new global "better" position than the previous state
-                    // If so we should prune the tree and re-begin the serach
-
-                    for (const move of moves) {
-                        const comp = compare(move.gameState, gameState)
-                        
-                        
-                        const parentMap = this.parentMap.get(move.hash);
-                        if (parentMap === undefined || (parentMap && parentMap.parentDepth > myDepth)) {
-                            // Found a closer way or initial way to get to this move.
-                            this.parentMap.set(move.hash, {parentMove: node, parentDepth: myDepth})
-                        }
-                        
-                        if (!this.visitedMap.has(move.hash)) {
-                            if(comp.loose > localMax) {
-                            localMax = comp.loose;
-                            //console.log("found new local max: ", move)
-                            //this.renderCb(move.gameState);
-                            //await waitAtLeast(100);
-                        }
-                        if (comp.loose > 0) {
-                            //console.log("found new best state: ", move);
-                            this.renderCb(move.gameState);
-                            //console.log("solution: ", this.constructSolution(move))
-                            //await waitAtLeast(10);
-                            stackStack.push([...stack]);
-                            stack = [];
-                            //break;
-                            
-                        }
-                            stack.push(move)
-                        }
-                    }
-                }
-                
-            
-                
-
-
+        let timer = window.setInterval(() => {
+            console.log(`search buffer size: ${stack.length} | numProcessed: ${numProcessed} | work: ${Math.floor(100* numProcessed / totalStackSize)}%`)
+        },2000);
+    
+        while (stack.length) {
+            const node = stack.pop();
+            numProcessed++;
+            if (!node) {
+                throw new Error("node was empty");
             }
-            console.log("exhausted partial search");
+            const {gameState, hash, isWin} = node;
+            
+            if (this.visitedMap.has(hash)) {
+                continue;
+            }
+            this.visitedMap.set(hash, true);
+            
+            const myParent = this.parentMap.get(hash) ?? {parentHash: "origin", parentDepth: -1};
+            const myDepth = myParent.parentDepth + 1;
+
+            if (shortestDepth > 0 && myDepth >= shortestDepth) {
+                continue;
+            }
+
+            
+            let {moves, freeMove} = this.getAllMovesFrom(gameState);
+            await waitAtLeast(0);
+
+            let intoExploredTree = false;
+
+            if (freeMove) {
+                const parentMapValue = this.parentMap.get(freeMove.hash);
+                if (parentMapValue === undefined || (parentMapValue && parentMapValue.parentDepth > myDepth)) {
+                    intoExploredTree = !!parentMapValue;
+                    this.parentMap.set(freeMove.hash, {parentMove: node, parentDepth: myDepth})
+
+                    if (freeMove.isWin) {
+                        console.log("found a way to win @ depth: ", myDepth);
+                        console.log("stack size: ", stack.length);
+                        localMax = 0;
+                        shortestDepth = myDepth;
+                        solutionNode = node;
+            
+                        if (!fullyExplore) {
+                            const solution = this.constructSolution(node);
+                            return solution;
+                        }
+                        continue;
+                    }
+
+                }
+                
+            }
+            if (intoExploredTree) {
+                continue;
+            }
+            
+
+            for (const move of moves) {
+                const comp = compare(move.gameState, gameState)
+                
+                const parentMapVal = this.parentMap.get(move.hash);
+                if (parentMapVal === undefined || (parentMapVal && parentMapVal.parentDepth > myDepth)) {
+                    // Found a closer way or initial way to get to this move.
+                    this.parentMap.set(move.hash, {parentMove: node, parentDepth: myDepth})
+
+                    
+                    if (move.isWin) {
+                        console.log("found a way to win @ depth: ", myDepth);
+                        console.log("stack size: ", stack.length);
+                        this.visitedMap.set(move.hash, true);
+                        localMax = 0;
+                        shortestDepth = myDepth;
+                        solutionNode = node;
+            
+                        if (!fullyExplore) {
+                            const solution = this.constructSolution(node);
+                            return solution;
+                        }
+                        continue;
+                    }
+                    if(parentMapVal) {
+                        continue;
+                    }
+                }
+                
+                
+                if (!this.visitedMap.has(move.hash)) {
+                    stack.push(move)
+                    totalStackSize++;
+                    if(comp > localMax) {
+                        localMax = comp;
+                        this.renderCb(move.gameState);
+                    }
+                    
+                
+                }
+            }
         }
+        
+        window.clearInterval(timer);
         console.log("exhausted total search")
+        if (solutionNode) {
+            const solution = this.constructSolution(solutionNode);
+            return solution;
+        }
+        
         
         return false;
 
@@ -413,7 +372,6 @@ export class Solver {
                 }
                 dragonIndices.push(cellIndex);
             }
-            //console.log(dragonIndices, color, collectAt)
             if(dragonIndices.length !== 4) {
                 return false;
             }
@@ -443,7 +401,6 @@ export class Solver {
                     nextState.freeCards[i-8] = null;
                 }
             }
-            //console.log(grabs)
             nextState.freeCards[freeSlotIndex] = {isDragon: true, locked: true, color}
             const hash = Solver.getStateHash(nextState);
             const move = {
@@ -710,7 +667,6 @@ export class Solver {
                 
                 // Destination cell is empty, run through the grab.
                 for(let g = 0; g < outerGrabCell.length; g++) {
-                    //console.log({outerGrabCell})
                     const nextState = quickCopyState(gameState);
                     const subgrab = nextState.gameCells[outerGrabCellIndex].splice(-g-1);
                     nextState.gameCells[innerGameCellIndex] = nextState.gameCells[innerGameCellIndex].concat(subgrab);
@@ -783,12 +739,137 @@ export class Solver {
         return moves;
     }
 
-    // Returns moves in order of priority
-    getAllMovesFrom(gameState: GameState): {moves: Move[], freeMoves: Move[]} {
-        //console.log("getAllMovesFrom");
-        // const grabs = this.getAllGrabs(gameState);
+    generateFreeMove(gameState: GameState): Move|null {
+        let done = false;
+        let hasCollectedLotus = false;
+        let hasCollectedNumbers = false;
 
+        while (!done) {
+            /**
+             * For every currently exposed end-card we check if 
+             * there are any other cards still in game which can be 
+             * placed on them that are themselves not end-cards. If 
+             * there are such cards left anywhere, the end-card in 
+             * question stays, otherwise it is moved to the solved 
+             * pile automatically.
+             */
+
+            // First we find all exposed end cards.
+            const exposedEndCards: {cellIndex: number, card: NumberCard}[] = []
+            let innerCollectedLotus = false;
+            for(let c = 0; c < 11; c++) {
+                let topCard = null;
+                if (c < 8) {
+                    const cell = gameState.gameCells[c];
+                    topCard = cell[cell.length-1];
+                }
+                else {
+                    topCard = gameState.freeCards[c-8];
+                }
+               
+                if (!topCard){
+                    continue;
+                }
+                if (isLotus(topCard)) {
+                    hasCollectedLotus = true;
+                    innerCollectedLotus = true; // :)
+                    gameState = quickCopyState(gameState);
+                    gameState.lotusCell = topCard;
+                    gameState.lotusCell.locked = true;
+                    if (c < 8) {
+                        gameState.gameCells[c].pop();
+                    }
+                    else {
+                        gameState.freeCards[c-8] = null;
+                    }
+                    continue;
+                }
+                if (!isNumber(topCard)) {
+                    continue;
+                }
+
+                const rankVal = Number(topCard.rank);
+                const stack = getStackFromColor(gameState, topCard.color);
+                if (stack + 1 === rankVal) {
+                    exposedEndCards.push({card: topCard, cellIndex: c})
+                }
+            }
+            if (innerCollectedLotus) {
+                continue;
+            }
+
+
+            let innerCollectedNumbers = false;
+            // Then we check if there are any cards that can be placed on them still in the game.
+            // If there are none, or if these cards are end cards themselves.
+            for(const {card, cellIndex} of exposedEndCards) {
+                const childRankVal = Number(card.rank) - 1;
+                // We get all colors that could be placed on the end card
+                let stacks = getAltStacksFromColor(gameState, card.color);
+                // We check the smallest rank card of these colors still on board
+                const smallestComplimentEndCard = Math.min(...stacks) + 1
+                // If that card is >= rank than our expoed end card, then we should collect
+                if (smallestComplimentEndCard >= childRankVal) {
+                    
+                    gameState = quickCopyState(gameState);
+                    if(cellIndex < 8) {
+                        gameState.gameCells[cellIndex].pop()
+                    }
+                    else {
+                        gameState.freeCards[cellIndex-8] = null;
+                    }
+
+                    if (card.color === "RED") {
+                        gameState.redStack++;
+                    } else if (card.color === "GREEN") {
+                        gameState.greenStack++;
+                    } else {
+                        gameState.blackStack++;
+                    }
+
+                    hasCollectedNumbers = true;
+                    innerCollectedNumbers = true; // :)              
+                
+                }
+            }
+            if (!innerCollectedNumbers) {
+                done = true;
+            }
+        }
+
+        if (!hasCollectedLotus && !hasCollectedNumbers) {
+            return null;
+        }
+        const hash = Solver.getStateHash(gameState);
+
+        const moveType = hasCollectedLotus ? 
+            (hasCollectedNumbers ? MoveType.NumberAndLotusCollection : MoveType.LotusCollection) 
+            : MoveType.NumberCollection;
+
+        return {
+            gameState,
+            description: `perform free collection of [${hasCollectedLotus ? 'lotus, ' : ''}, ${hasCollectedNumbers ? 'numbers' : ''}]`,
+            hash,
+            isWin: hash === Solver.winHash,
+            moveType,
+        };
+
+        
+    }
+
+    // Returns moves in order of priority
+    getAllMovesFrom(gameState: GameState, validateMoves=false): {moves: Move[], freeMove: Move|null} {
         let parentScore = score(gameState);
+
+        const freeMove = this.generateFreeMove(gameState)
+        
+        if (freeMove) {
+            // Generate moves after auto number collection and stuff.
+            gameState = freeMove.gameState;
+            if (freeMove.isWin) {
+                return {freeMove, moves: []}
+            }
+        }
 
         const grabs: Cell[] = [] 
 
@@ -833,17 +914,8 @@ export class Solver {
             else {
                 grabs.push([])
             }
-            // else {
-            //     emptyFreeCards++;
-            //     grabs.push(null)
-            // }
         }
         
-        let freeMoves: Move[] = []
-        // Free moves
-        freeMoves = freeMoves.concat(this.getLotusCollection(grabs, gameState))
-        freeMoves = freeMoves.concat(this.getNumberCollection(grabs, gameState));
-
         let moves: Move[] = []
         // Potentially costly moves
         moves = moves.concat(this.getDragonCollection(grabs, gameState))
@@ -855,42 +927,31 @@ export class Solver {
         // Costly moves
         moves = moves.concat(this.getCellToFreeSlot(grabs, gameState));
 
-        // console.log(moves)
+        if (validateMoves) {
+            for(let move of moves) {
+                let moveScore = score(move.gameState);
+                if(moveScore.cardsInPlay !== parentScore.cardsInPlay) {
+                    let delta = parentScore.cardsInPlay - moveScore.cardsInPlay;
+                    let expectedDelta = -(gameState.redStack + gameState.blackStack + gameState.greenStack) +
+                    (move.gameState.redStack + move.gameState.blackStack + move.gameState.greenStack) 
+                    
+                    if (moveScore.foldedDragons !== parentScore.foldedDragons) {
+                        expectedDelta+=3;
+                    }
+                    if (move.moveType == MoveType.LotusCollection) {
+                        expectedDelta--;
+                    }
+                    if(delta !== expectedDelta) {
+                        console.log({delta, expectedDelta, move, parent: gameState});
+                        throw new Error("got it")
+                    }
 
-
-        for(let move of moves) {
-            let moveScore = score(move.gameState);
-            if(moveScore.cardsInPlay !== parentScore.cardsInPlay) {
-                let delta = parentScore.cardsInPlay - moveScore.cardsInPlay;
-                let expectedDelta = -(gameState.redStack + gameState.blackStack + gameState.greenStack) +
-                 (move.gameState.redStack + move.gameState.blackStack + move.gameState.greenStack) 
-                
-                if (moveScore.foldedDragons !== parentScore.foldedDragons) {
-                    expectedDelta+=3;
-                }
-                if (move.moveType == MoveType.LotusCollection) {
-                    expectedDelta--;
-                }
-                if(delta !== expectedDelta) {
-                    console.log({delta, expectedDelta, move, parent: gameState});
-                    throw new Error("got it")
                 }
 
             }
-
         }
 
-
-
-        return {moves, freeMoves};
-        // return [
-        //     ...this.getLotusCollection(grabs),
-        //     ...this.getDragonCollection(grabs),
-        //     ...this.getNumberCollection(grabs),
-        //     ...this.getFreeSlotToCell(grabs),
-        //     ...this.getCellToCell(grabs),
-        //     ...this.getCellToFreeSlot(grabs),
-        // ]
+        return {moves, freeMove};
     }
 
 
