@@ -200,7 +200,7 @@ export class Solver {
     async solveFrom(gameState: GameState): Promise<Solution | false> {
         console.log("solving");
 
-        const fullyExplore = true;
+        const fullyExplore = false;
         let localMax = 0;
         let solutionNode: Move | undefined;
         let stack: Solution = [{moveType: MoveType.Initial,gameState, hash: Solver.getStateHash(gameState)}];
@@ -253,6 +253,7 @@ export class Solver {
             
                         if (!fullyExplore) {
                             const solution = this.constructSolution(node);
+                            clearInterval(timer)
                             return solution;
                         }
                         continue;
@@ -271,9 +272,22 @@ export class Solver {
                 
                 const parentMapVal = this.parentMap.get(move.hash);
                 if (parentMapVal === undefined || (parentMapVal && parentMapVal.parentDepth > myDepth)) {
+
+                    if (parentMapVal === undefined) {
+                        stack.push(move)
+                        totalStackSize++;
+                        if(comp > localMax) {
+                            localMax = comp;
+                            this.renderCb(move.gameState);
+                        }
+                        
+                    
+                    }
+
                     // Found a closer way or initial way to get to this move.
                     this.parentMap.set(move.hash, {parentMove: node, parentDepth: myDepth})
 
+                    
                     
                     if (move.isWin) {
                         console.log("found a way to win @ depth: ", myDepth);
@@ -285,6 +299,7 @@ export class Solver {
             
                         if (!fullyExplore) {
                             const solution = this.constructSolution(node);
+                            clearInterval(timer)
                             return solution;
                         }
                         continue;
@@ -295,16 +310,7 @@ export class Solver {
                 }
                 
                 
-                if (!this.visitedMap.has(move.hash)) {
-                    stack.push(move)
-                    totalStackSize++;
-                    if(comp > localMax) {
-                        localMax = comp;
-                        this.renderCb(move.gameState);
-                    }
-                    
-                
-                }
+               
             }
         }
         
@@ -312,6 +318,7 @@ export class Solver {
         console.log("exhausted total search")
         if (solutionNode) {
             const solution = this.constructSolution(solutionNode);
+            clearInterval(timer)
             return solution;
         }
         
@@ -945,9 +952,7 @@ export class Solver {
                         console.log({delta, expectedDelta, move, parent: gameState});
                         throw new Error("got it")
                     }
-
                 }
-
             }
         }
 
@@ -956,7 +961,6 @@ export class Solver {
 
 
     runTests() {
-
         const gameState1: GameState = {
             freeCards: [null, null, null],
             lotusCell: null,
